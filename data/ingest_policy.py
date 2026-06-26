@@ -4,7 +4,7 @@ import re
 from dotenv import load_dotenv
 
 from langchain_community.document_loaders import TextLoader
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_core.documents import Document
 from pinecone import Pinecone
 from sentence_transformers import SentenceTransformer
 
@@ -30,30 +30,58 @@ def load_policy():
 
 
 # --------------------------------------------------
-# Split Policy
+# Semantic Section Chunking (Markdown heading based)
 # --------------------------------------------------
 
 def split_policy(documents):
 
-    splitter = RecursiveCharacterTextSplitter(
+    text = documents[0].page_content
 
-        chunk_size=512,
+    lines = text.split("\n")
 
-        chunk_overlap=50,
+    sections = []
+    current_lines = []
 
-        separators=[
-            "\n# ",
-            "\n## ",
-            "\n### ",
-            "\n\n",
-            "\n",
-            " ",
-            ""
-        ]
+    for line in lines:
 
-    )
+        is_heading = re.match(r"^#{1,6}\s+", line)
 
-    chunks = splitter.split_documents(documents)
+        if is_heading:
+
+            if current_lines:
+                sections.append("\n".join(current_lines).strip())
+
+            current_lines = [line]
+
+        else:
+
+            current_lines.append(line)
+
+    if current_lines:
+        sections.append("\n".join(current_lines).strip())
+
+    chunks = []
+
+    for section in sections:
+
+        section = section.strip()
+
+        if not section:
+            continue
+
+        metadata = extract_metadata(section)
+
+        chunks.append(
+
+            Document(
+
+                page_content=section,
+
+                metadata=metadata
+
+            )
+
+        )
 
     return chunks
 
@@ -72,7 +100,7 @@ def extract_metadata(text):
 
         "product_category": "general",
 
-        "refund_window": None,
+        "refund_window": -1,
 
         "contains_fraud_policy": False,
 
@@ -86,96 +114,138 @@ def extract_metadata(text):
 
     lower = text.lower()
 
-    # ----------------------------
-    # Section
-    # ----------------------------
+    heading = re.search(
+        r"^#+\s+(.*)",
+        text,
+        re.MULTILINE,
+    )
 
-    match = re.search(r"#\s+(.*)", text)
+    if heading:
 
-    if match:
-        metadata["section"] = match.group(1).strip()
+        metadata["section"] = heading.group(1).strip()
 
-    # ----------------------------
+    section = metadata["section"].lower()
+
+    # ---------------------------------------
     # Decision
-    # ----------------------------
+    # ---------------------------------------
 
-    if "approve" in lower:
+    if "approval" in section:
+
         metadata["decision"] = "approve"
 
-    if "reject" in lower:
+    elif "rejection" in section:
+
         metadata["decision"] = "reject"
 
-    if "escalate" in lower:
+    elif (
+
+        "escalation" in section
+
+        or
+
+        "boundary"
+
+        in section
+
+        or
+
+        "damaged"
+
+        in section
+
+        or
+
+        "manual review"
+
+        in section
+
+        or
+
+        "wrong item"
+
+        in section
+
+        or
+
+        "goodwill"
+
+        in section
+
+        or
+
+        "lost shipment"
+
+        in section
+
+    ):
+
         metadata["decision"] = "escalate"
 
-    # ----------------------------
+    # ---------------------------------------
     # Product Category
-    # ----------------------------
+    # ---------------------------------------
 
-    if "physical" in lower:
-        metadata["product_category"] = "physical"
+    for category in [
 
-    elif "digital" in lower:
-        metadata["product_category"] = "digital"
+        "physical",
 
-    elif "perishable" in lower:
-        metadata["product_category"] = "perishable"
+        "digital",
 
-    elif "electronics" in lower:
-        metadata["product_category"] = "electronics"
+        "perishable",
 
-    elif "apparel" in lower:
-        metadata["product_category"] = "apparel"
+        "electronics",
 
-    # ----------------------------
+        "apparel",
+
+    ]:
+
+        if category in lower:
+
+            metadata["product_category"] = category
+
+            break
+
+    # ---------------------------------------
     # Refund Window
-    # ----------------------------
+    # ---------------------------------------
 
-    if "45 days" in lower:
+    days = re.findall(r"(\d+)\s*days", lower)
 
-        metadata["refund_window"] = 45
+    if days:
 
-    elif "30 days" in lower:
+        metadata["refund_window"] = int(days[0])
 
-        metadata["refund_window"] = 30
-
-    elif "29 days" in lower:
-
-        metadata["refund_window"] = 29
-
-    elif "22 days" in lower:
-
-        metadata["refund_window"] = 22
-
-    elif "14 days" in lower:
-
-        metadata["refund_window"] = 14
-
-    elif "7 days" in lower:
-
-        metadata["refund_window"] = 7
-
-    # ----------------------------
+    # ---------------------------------------
     # Flags
-    # ----------------------------
+    # ---------------------------------------
 
     metadata["contains_fraud_policy"] = (
+
         "fraud" in lower
+
     )
 
     metadata["contains_shipping_policy"] = (
-        "shipping" in lower or
+
+        "shipping" in lower
+
+        or
+
         "delivery" in lower
+
     )
 
     metadata["contains_gold_policy"] = (
+
         "gold" in lower
+
     )
 
     metadata["requires_manual_review"] = (
-        "manual_review_required" in lower or
-        "manual review" in lower or
-        "escalate" in lower
+
+        metadata["decision"] == "escalate"
+
     )
 
     return metadata
@@ -220,16 +290,15 @@ INDEX_NAME = "policydb"
 # Upload to Pinecone
 # --------------------------------------------------
 
-PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
-
-INDEX_NAME = "policydb"
-
-
 def upload_to_pinecone(chunks):
 
     pc = Pinecone(api_key=PINECONE_API_KEY)
 
     index = pc.Index(INDEX_NAME)
+
+    print("Deleting existing vectors...")
+
+    index.delete(delete_all=True)
 
     vectors = []
 
