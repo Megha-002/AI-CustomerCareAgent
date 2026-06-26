@@ -7,9 +7,11 @@ langgraph
 langchain
 langchain-community
 langchain-groq
+langchain-huggingface
+langchain-pinecone
+langchain-text-splitters
 
-pinecone-client
-chromadb
+pinecone
 
 sentence-transformers
 
