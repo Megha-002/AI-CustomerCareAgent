@@ -230,6 +230,134 @@ When evaluating refund requests, the AI should apply rules in the following orde
 10. Escalate if required
 
 ---
+# 16. Human Review and Escalation Policy
+
+The AI assistant should avoid making automated decisions whenever policy interpretation, customer evidence, or business judgment is required.
+
+A case must be escalated to a human support agent if any of the following conditions are met.
+
+---
+
+## 16.1 Boundary Time Cases
+
+Refund requests submitted within **5 minutes before or after** the refund deadline should not be automatically approved or rejected.
+
+Examples:
+
+- Refund submitted at 11:58 PM when the window expires at midnight.
+- Refund submitted at 12:01 AM immediately after the deadline.
+
+Reason:
+
+Small timing differences may result from payment processing delays, network latency, or timezone differences.
+
+Decision:
+
+Escalate to Human Agent.
+
+---
+
+## 16.2 High-Value Orders
+
+Orders with a purchase amount greater than **₹50,000** (or the configured business threshold) require manual approval.
+
+Decision:
+
+Escalate to Human Agent.
+
+---
+
+## 16.3 Lost Shipment Claims
+
+If the order status shows "Delivered" but the customer claims the package was never received, the case must be manually investigated.
+
+Decision:
+
+Escalate to Human Agent.
+
+---
+
+## 16.4 Damaged Product Claims
+
+If the customer reports that a product arrived damaged or defective, image verification or manual inspection may be required.
+
+Decision:
+
+Escalate to Human Agent.
+
+---
+
+## 16.5 Wrong Product Delivered
+
+If the customer claims that the received product does not match the ordered product, warehouse verification is required.
+
+Decision:
+
+Escalate to Human Agent.
+
+---
+
+## 16.6 Missing Purchase Evidence
+
+If no receipt or order confirmation is available and the AI cannot confidently verify the purchase from CRM records, the request should be escalated.
+
+Decision:
+
+Escalate to Human Agent.
+
+---
+
+## 16.7 Goodwill Exceptions
+
+Support managers may approve refunds outside the normal policy for exceptional customer service reasons.
+
+Examples include:
+
+- Long-term loyal customers.
+- Premium customers requesting a one-time exception.
+- Minor policy violations.
+
+The AI must never grant goodwill refunds automatically.
+
+Decision:
+
+Escalate to Human Agent.
+
+---
+
+## 16.8 Customer Disputes
+
+If a customer disputes the refund policy, references previous exceptions, threatens legal action, or requests a supervisor, the AI should stop automated processing.
+
+Decision:
+
+Escalate to Human Agent.
+
+---
+
+## 16.9 AI Confidence Threshold
+
+If the AI confidence score falls below the configured threshold (default: 0.65), the request should be transferred to a human agent instead of making an uncertain decision.
+
+Decision:
+
+Escalate to Human Agent.
+
+---
+
+## 16.10 Conflicting Information
+
+The AI should escalate whenever customer statements conflict with CRM records.
+
+Examples include:
+
+- Customer says the package never arrived, but CRM says "Delivered".
+- Customer claims they never requested a previous refund.
+- Multiple records contain inconsistent information.
+
+Decision:
+
+Escalate to Human Agent.
 
 # Summary
 
