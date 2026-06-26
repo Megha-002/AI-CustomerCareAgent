@@ -1,56 +1,66 @@
-# graph/nodes/logging_node.py
 """
-Logging Node - Final node that logs the complete workflow summary.
-Records to MLflow and prepares the final state for the API response.
+Logging Node — Final node in the workflow.
+
+Records the complete state to logs.
+Does not make any decisions or business logic.
+Only reads fields that exist in AgentState.
 """
 
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+import logging
+from datetime import datetime
 
-from graph.state import AgentState, add_reasoning_log, get_state_summary
+from graph.state import AgentState
+
+logger = logging.getLogger(__name__)
 
 
-def logging_node(state: AgentState) -> AgentState:
+def logging_node(state: AgentState) -> dict:
     """
-    Final logging and cleanup.
-    
-    - Logs workflow completion
-    - Prepares response_data for API
-    - Records summary for observability
+    Log the final state of the workflow.
+
+    Consumes: decision, confidence, response, errors, reasoning_log
+    Produces: completed_at, reasoning_log (appended)
     """
-    
-    # Get state summary
-    summary = get_state_summary(state)
-    
-    # Build structured response data
-    state["response_data"] = {
-        "request_id": state.get("request_id"),
-        "final_decision": state.get("final_decision"),
-        "decision_reason": state.get("decision_reason"),
-        "refund_amount": state.get("refund_amount"),
-        "refund_type": state.get("refund_type"),
-        "response_text": state.get("response_text"),
-        "eligibility_confidence": state.get("eligibility_confidence"),
-        "escalation_id": state.get("escalation_result", {}).get("escalation_id") if state.get("escalation_result") else None,
-        "reasoning_logs": state.get("reasoning_logs", []),
-        "errors": state.get("errors", []),
-        "workflow_status": state.get("workflow_status"),
-        "summary": summary
+    completed_at = datetime.utcnow().isoformat()
+
+    # ✅ All fields read here exist in AgentState
+    decision = state.get("decision", "UNKNOWN")
+    confidence = state.get("confidence") or 0
+    response = state.get("response", "")
+    errors = state.get("errors") or []
+    reasoning_log = state.get("reasoning_log") or []
+
+    # Log summary
+    logger.info("=" * 60)
+    logger.info("WORKFLOW COMPLETED")
+    logger.info(f"  Decision: {decision}")
+    logger.info(f"  Confidence: {confidence:.2f}")
+    logger.info(f"  Errors: {len(errors)}")
+    logger.info(f"  Reasoning steps: {len(reasoning_log)}")
+    logger.info(f"  Response length: {len(response)} chars")
+    logger.info("=" * 60)
+
+    # Log each reasoning step
+    for step in reasoning_log:
+        logger.info(
+            f"  [{step.get('node', '?')}] {step.get('output_summary', '')}"
+        )
+
+    # Log errors if any
+    for error in errors:
+        logger.error(f"  ERROR: {error}")
+
+    # Log full response for audit
+    if response:
+        logger.debug(f"  Full response: {response[:500]}")
+
+    return {
+        "completed_at": completed_at,
+        "reasoning_log": [{
+            "node": "logging",
+            "timestamp": completed_at,
+            "input_summary": f"decision={decision}, confidence={confidence:.2f}",
+            "output_summary": "Workflow logged successfully",
+            "thinking": "Passive logging node — no decisions made",
+        }],
     }
-    
-    # Log completion
-    state = add_reasoning_log(
-        state, "logging", "workflow_complete",
-        f"Workflow {state.get('workflow_status', 'unknown').upper()} - "
-        f"Decision: {state.get('final_decision', 'N/A').upper()}",
-        summary
-    )
-    
-    # Log to MLflow (placeholder - will be wired in observability step)
-    state = add_reasoning_log(
-        state, "logging", "mlflow_logged",
-        "Workflow metrics logged to MLflow"
-    )
-    
-    return state
